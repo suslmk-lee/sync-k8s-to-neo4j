@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neo4j-sync-config
+  namespace: default
+data:
+  SYNC_DELAY_SECONDS: "2"
+  PROFILE: "prod"  # 운영 환경에서는 prod
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neo4j-sync-secret
+  namespace: default
+type: Opaque
+data:
+  NEO4J_PASSWORD: cHJvZF9wYXNzd29yZA==  # "prod_password"의 Base64
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neo4j-sync
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j-sync
+  template:
+    metadata:
+      labels:
+        app: neo4j-sync
+    spec:
+      containers:
+      - name: neo4j-sync
+        image: your-registry/sync-k8s-to-neo4j:latest
+        env:
+        - name: NEO4J_URI
+          value: "bolt://neo4j.default.svc.cluster.local:7687"
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-sync-secret
+              key: NEO4J_PASSWORD
+        - name: SYNC_DELAY_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              name: neo4j-sync-config
+              key: SYNC_DELAY_SECONDS
+        - name: PROFILE
+          valueFrom:
+            configMapKeyRef:
+              name: neo4j-sync-config
+              key: PROFILE
+      serviceAccountName: neo4j-sync-sa
