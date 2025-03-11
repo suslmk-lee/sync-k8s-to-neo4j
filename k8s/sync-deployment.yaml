@@ -40,6 +40,8 @@ spec:
       labels:
         app: neo4j-sync
     spec:
+      imagePullSecrets:
+      - name: ncr
       containers:
       - name: neo4j-sync
         image: 44ce789b-kr1-registry.container.nhncloud.com/container-platform-registry/sync-k8s-to-neo4j:latest
@@ -61,6 +63,4 @@ spec:
             configMapKeyRef:
               name: neo4j-sync-config
               key: PROFILE
-        imagePullSecrets:
-        - name: ncr
       serviceAccountName: neo4j-sync-sa
