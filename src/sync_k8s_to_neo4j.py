@@ -95,12 +95,19 @@ class Neo4jSync:
 
     def watch_resource(self, resource_type, list_func, update_func):
         w = watch.Watch()
+        last_version = {}
         logger.info(f"Starting watch for {resource_type}...")
         for event in w.stream(list_func):
             obj = event['object']
-            logger.info(f"{resource_type} {obj.metadata.name} - {event['type']}")
+            name = obj.metadata.name
+            version = obj.metadata.resource_version
+            if name in last_version and last_version[name] == version:
+                logger.debug(f"Skipping {resource_type} {name} - unchanged version {version}")
+                continue
+            logger.info(f"{resource_type} {name} - {event['type']} - ResourceVersion: {version}")
             with self.driver.session() as session:
                 session.write_transaction(update_func, obj)
+            last_version[name] = version
             if self.sync_delay_seconds > 0:
                 time.sleep(self.sync_delay_seconds)
 

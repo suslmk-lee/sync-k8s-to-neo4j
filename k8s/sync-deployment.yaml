@@ -8,13 +8,22 @@ data:
   PROFILE: "prod"  # 운영 환경에서는 prod
 ---
 apiVersion: v1
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyI0NGNlNzg5Yi1rcjEtcmVnaXN0cnkuY29udGFpbmVyLm5obmNsb3VkLmNvbS9jb250YWluZXItcGxhdGZvcm0tcmVnaXN0cnkiOnsidXNlcm5hbWUiOiJYQ0ExT2owRnFBOE9NaGFsT1VoSyIsInBhc3N3b3JkIjoiekdneG83WGxwazVvalk3diIsImF1dGgiOiJXRU5CTVU5cU1FWnhRVGhQVFdoaGJFOVZhRXM2ZWtkbmVHODNXR3h3YXpWdmFsazNkZz09In19fQ==
+kind: Secret
+metadata:
+  name: ncr
+  namespace: default
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: neo4j-sync-secret
   namespace: default
 type: Opaque
 data:
-  NEO4J_PASSWORD: cHJvZF9wYXNzd29yZA==  # "prod_password"의 Base64
+  NEO4J_PASSWORD: cGFzc3dvcmQK  # "password"의 Base64
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -33,7 +42,7 @@ spec:
     spec:
       containers:
       - name: neo4j-sync
-        image: your-registry/sync-k8s-to-neo4j:latest
+        image: 44ce789b-kr1-registry.container.nhncloud.com/container-platform-registry/sync-k8s-to-neo4j:latest
         env:
         - name: NEO4J_URI
           value: "bolt://neo4j.default.svc.cluster.local:7687"
@@ -52,4 +61,6 @@ spec:
             configMapKeyRef:
               name: neo4j-sync-config
               key: PROFILE
+        imagePullSecrets:
+        - name: ncr
       serviceAccountName: neo4j-sync-sa
