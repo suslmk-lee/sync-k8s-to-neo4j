@@ -5,32 +5,48 @@ import os
 import logging
 import time
 from threading import Thread
+import socket
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 현재 환경 확인 (Kubernetes 또는 로컬)
+def is_running_in_kubernetes():
+    return os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount')
+
+# PROFILE 환경 변수 설정
 PROFILE = os.getenv("PROFILE", "dev")
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# 프로젝트 루트 디렉토리 (src의 상위 디렉토리)
-root_dir = os.path.dirname(current_dir)
-env_file = os.path.join(root_dir, f".env.{PROFILE}")
-
 logger.info(f"현재 PROFILE: {PROFILE}")
-logger.info(f"환경 변수 파일 경로: {env_file}")
 
-# 환경 변수 파일 로드
-if os.path.exists(env_file):
-    logger.info(f"환경 변수 파일 로드 중: {env_file}")
-    load_dotenv(dotenv_path=env_file, override=True)
-    logger.info(f"환경 변수 파일 로드 완료: {env_file}")
-else:
-    logger.warning(f"환경 변수 파일을 찾을 수 없습니다: {env_file}, 기본 .env 파일 또는 환경 변수를 사용합니다.")
-    default_env = os.path.join(root_dir, ".env")
-    if os.path.exists(default_env):
-        logger.info(f"기본 환경 변수 파일 로드 중: {default_env}")
-        load_dotenv(dotenv_path=default_env, override=True)
+# Kubernetes 환경에서는 ConfigMap과 Secret에서 환경 변수를 이미 로드했으므로 추가 로드 불필요
+if not is_running_in_kubernetes():
+    # 로컬 개발 환경에서만 .env 파일 로드
+    logger.info("로컬 개발 환경에서 실행 중입니다. .env 파일을 로드합니다.")
+    # 현재 스크립트의 디렉토리 경로 가져오기
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 프로젝트 루트 디렉토리 (src의 상위 디렉토리)
+    root_dir = os.path.dirname(current_dir)
+    env_file = os.path.join(root_dir, f".env.{PROFILE}")
+    
+    logger.info(f"환경 변수 파일 경로: {env_file}")
+    
+    if os.path.exists(env_file):
+        logger.info(f"환경 변수 파일 로드 중: {env_file}")
+        load_dotenv(dotenv_path=env_file, override=True)
+        logger.info(f"환경 변수 파일 로드 완료: {env_file}")
     else:
-        logger.info("환경 변수 파일이 없습니다. 시스템 환경 변수를 사용합니다.")
+        logger.warning(f"환경 변수 파일을 찾을 수 없습니다: {env_file}, 기본 .env 파일 또는 환경 변수를 사용합니다.")
+        default_env = os.path.join(root_dir, ".env")
+        if os.path.exists(default_env):
+            logger.info(f"기본 환경 변수 파일 로드 중: {default_env}")
+            load_dotenv(dotenv_path=default_env, override=True)
+        else:
+            logger.info("환경 변수 파일이 없습니다. 시스템 환경 변수를 사용합니다.")
+else:
+    logger.info("Kubernetes 환경에서 실행 중입니다. ConfigMap과 Secret에서 환경 변수를 사용합니다.")
+    # Kubernetes 환경에서는 환경 변수가 이미 설정되어 있으므로 추가 작업 불필요
+    logger.info(f"NEO4J_URI 환경 변수: {os.getenv('NEO4J_URI')}")
+    logger.info(f"SYNC_DELAY_SECONDS 환경 변수: {os.getenv('SYNC_DELAY_SECONDS')}")
 
 class KubernetesClient:
     def __init__(self, kubeconfig_path=None):
@@ -57,13 +73,17 @@ class Neo4jSync:
     def __init__(self):
         self.k8s_client = KubernetesClient()
         
-        # 환경 변수 로드
-        self.neo4j_uri = os.getenv("NEO4J_URI", "bolt://180.210.82.103:32500" if PROFILE == "dev" else "bolt://neo4j.default.svc.cluster.local:7687")
-        self.neo4j_password = os.getenv("NEO4J_PASSWORD")
+        # 환경에 따른 기본값 설정
+        default_neo4j_uri = "bolt://neo4j.default.svc.cluster.local:7687" if is_running_in_kubernetes() else "bolt://180.210.82.103:32500"
+        
+        # 환경 변수 로드 (Kubernetes 환경에서는 ConfigMap 또는 Secret에서 자동으로 로드됨)
+        self.neo4j_uri = os.getenv("NEO4J_URI", default_neo4j_uri)
+        self.neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
         self.sync_delay_seconds = float(os.getenv("SYNC_DELAY_SECONDS", 0))
         
         # 최종 설정값 로깅
         logger.info(f"사용할 Neo4j URI: {self.neo4j_uri}")
+        logger.info(f"사용할 Sync Delay: {self.sync_delay_seconds}초")
         try:
             self.driver = GraphDatabase.driver(self.neo4j_uri, auth=("neo4j", self.neo4j_password))
             with self.driver.session() as session:
